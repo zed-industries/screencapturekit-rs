@@ -1,0 +1,51 @@
+name: Prebuilt Swift bridges
+
+# Builds the Swift bridge libraries and attaches them to a release, for
+# consumers whose builds cannot run `swift build`. Push a tag named
+# `swift-bridges-<version>` on a commit that contains this workflow.
+
+on:
+  push:
+    tags:
+      - "swift-bridges-*"
+
+permissions:
+  contents: write
+
+env:
+  # The companion crates the archive is built from. Keep these at the
+  # revisions the consumer pins.
+  APPLE_CF_REF: 73fc34dfde8d6027f8deb3747c04a090c3db312f
+  APPLE_METAL_REF: ed54b21f5ef18704757142c7f6c3931d6976229a
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/apple-cf-rs
+          ref: ${{ env.APPLE_CF_REF }}
+          path: .bridges/apple-cf-rs
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/apple-metal-rs
+          ref: ${{ env.APPLE_METAL_REF }}
+          path: .bridges/apple-metal-rs
+      - name: Build the bridge archive
+        run: |
+          xcodebuild -version
+          scripts/build-prebuilt-swift-bridges.sh \
+            .bridges/apple-cf-rs .bridges/apple-metal-rs dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          archive=dist/apple-swift-bridges-aarch64-macos.tar.gz
+          checksum="$(shasum -a 256 "$archive" | cut -d' ' -f1)"
+          notes="Prebuilt Swift bridge static libraries for \`screencapturekit\`, \`apple-cf\` (\`$APPLE_CF_REF\`) and \`apple-metal\` (\`$APPLE_METAL_REF\`), built for arm64 macOS 13 and later. Each crate links its library from the directory named by \`APPLE_SWIFT_BRIDGES_PREBUILT_DIR\`.
+
+          sha256: \`$checksum\`"
+          gh release create "$TAG" "$archive" --title "$TAG" --notes "$notes" --verify-tag
