@@ -168,6 +168,26 @@ fn main() {
     println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");
 
     // Build the Swift bridge
+    // A hermetic build cannot run `swift build`. When this names a directory
+    // holding the bridge libraries built ahead of time, link the one there.
+    println!("cargo:rerun-if-env-changed=APPLE_SWIFT_BRIDGES_PREBUILT_DIR");
+    if let Ok(prebuilt_dir) = env::var("APPLE_SWIFT_BRIDGES_PREBUILT_DIR") {
+        println!("cargo:rustc-link-search=native={prebuilt_dir}");
+        println!("cargo:rustc-link-lib=static=ScreenCaptureKitBridge");
+        println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=CoreGraphics");
+        println!("cargo:rustc-link-lib=framework=CoreMedia");
+        println!("cargo:rustc-link-lib=framework=IOSurface");
+        // The bridge names the Swift runtime libraries it needs. Apple's
+        // linker looks for them in the SDK on its own; others must be told.
+        println!("cargo:rerun-if-env-changed=SDKROOT");
+        if let Ok(sdk_root) = env::var("SDKROOT") {
+            println!("cargo:rustc-link-search=native={sdk_root}/usr/lib/swift");
+        }
+        println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+        return;
+    }
+
     let swift_dir = "swift-bridge";
     let out_dir = env::var("OUT_DIR").unwrap();
     let swift_build_dir = format!("{out_dir}/swift-build");
